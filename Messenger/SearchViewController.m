@@ -13,7 +13,7 @@
 #import "MessagesViewController.h"
 #import "NewConversationViewController.h"
 #import "DUViewController.h"
-
+#import "Lockbox.h"
 #import "JSONModelLib.h"
 #import "UsersFeed.h"
 //#import "OxwallFeed.h"
@@ -22,27 +22,32 @@
 @interface SearchViewController () {
     UsersFeed* _feed;
     UsersModel* usersModel;
-    NSArray* usersArr;
     
 }
 
 @end
 
-@implementation SearchViewController {
+@implementation SearchViewController
     
     UsersFeed * _feed;
     NSArray *searchResults;
     NSArray *searchResultsAvatar;
+    NSMutableArray *searchResultId;
     // NSArray* usersArr;
     NSDictionary* json;
     UINavigationController *navController;
-    
-}
+int row;
+NSString *SITE;
+NSString *BASE_URL;
+
 @synthesize usersArr, json, sender, receiver, subject, conversationId;
 
 - (void)viewDidLoad
 {
     [super viewDidLoad];
+    
+    SITE = [Constants getSiteName];
+    BASE_URL = [Constants getBaseUrl];
     
     usersArr = [[NSArray alloc]init];
     json = [[NSDictionary alloc]init];
@@ -50,10 +55,11 @@
     
     // Title
     self.title = @"New message";
+    sender = [Lockbox stringForKey:@"userid"];
     
-    [self getFeed:@"Th"];
+    [self getFeed:@""];
+    
 }
-
 
 -(void)viewWillAppear:(BOOL)animated
 {
@@ -69,6 +75,7 @@
     if ([navController.viewControllers indexOfObject:self]==NSNotFound) {
         // back button was pressed.  We know this is true because self is no longer
         // in the navigation stack.
+        NSLog(@"About to crash");
     }
     
     
@@ -82,11 +89,34 @@
     
     NSPredicate *resultPredicate = [NSPredicate predicateWithFormat:@"SELF CONTAINS[cd] %@",searchText];
     
-    
-    
     searchResults = [[usersArr valueForKey:@"realname"] filteredArrayUsingPredicate:resultPredicate];
-   //We can´t implement this this way.
-    //searchResultsAvatar = [usersArr valueForKey:@"avatar"];
+
+    
+    
+    NSMutableArray *newArray = [[NSMutableArray alloc] init];
+    [newArray addObjectsFromArray:[usersArr valueForKey:@"realname"]];
+    
+    NSIndexSet *indexes = [newArray indexesOfObjectsPassingTest:^(id obj, NSUInteger idx, BOOL *stop) {
+        return [resultPredicate evaluateWithObject:obj];
+    }];
+    
+    NSUInteger index=[indexes firstIndex];
+    searchResultId = [[NSMutableArray alloc] init];
+    if (index != NSNotFound) {
+        [searchResultId addObject:[NSString stringWithFormat:@"%d",index]];
+    }
+    
+    NSLog(@"Search Result is %d",index);
+    while(index != NSNotFound)
+    {
+        index=[indexes indexGreaterThanIndex: index];
+        if(index != NSNotFound){
+            [searchResultId addObject:[NSString stringWithFormat:@"%d",index]];
+            NSLog(@"Search Result is %d",index);
+        }
+        
+    }
+    
 }
 
 -(BOOL)searchDisplayController:(UISearchDisplayController *)controller
@@ -113,7 +143,7 @@ shouldReloadTableForSearchString:(NSString *)searchString
                                   completion:^(NSDictionary *json, JSONModelError *err) {
                                       
                                       //got JSON back
-                                      NSLog(@"Got JSON from web: %@", json);
+                                      //NSLog(@"Got JSON from web: %@", json);
                                       
                                       if (err) {
                                           [[[UIAlertView alloc] initWithTitle:@"Error"
@@ -125,14 +155,19 @@ shouldReloadTableForSearchString:(NSString *)searchString
                                       }
                                       
                                       //initialize the models
-                                      usersArr = [UsersModel arrayOfModelsFromDictionaries:
+                                      NSArray * tmp = [[NSArray alloc]init];
+                                      tmp = [UsersModel arrayOfModelsFromDictionaries:
                                                   json[@"posts"]
                                                   ];
-                                      
-                                      if (usersArr) NSLog(@"Loaded successfully models");
+                                      //usersArr = [tmp mutableCopy];
+                                      NSPredicate *idPredicate = [NSPredicate predicateWithFormat:@"id != %@", sender];
+                                      usersArr = [[tmp filteredArrayUsingPredicate:idPredicate]mutableCopy];
+                                      if (usersArr.count > 0) NSLog(@"usersArr count: %i", usersArr.count);
                                       [self.tableView reloadData];
                                       
                                   }];
+    //NSArray *data = [NSArray arrayWithObject:[NSMutableDictionary dictionaryWithObject:@"foo" forKey:@"BAR"]];
+
     
     
     
@@ -147,7 +182,7 @@ shouldReloadTableForSearchString:(NSString *)searchString
 -(NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
     if (tableView == self.searchDisplayController.searchResultsTableView) {
-        return [searchResults count];
+        return [searchResultId count];
         
     } else {
         
@@ -162,63 +197,55 @@ shouldReloadTableForSearchString:(NSString *)searchString
 
 -(UITableViewCell*)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    //UsersModel* user = usersArr[indexPath.row];
-    //user = _feed.posts[indexPath.row];
     static NSString *cellIdentifier = @"SearchCell";
     
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
-    
-    
-    // UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"SearchCell" forIndexPath:indexPath];
-    
-    
+    // et försök att rensa data. Rungerar inte
     if (cell == nil) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"SearchCell"];
     }
     
     // Here we use the new provided setImageWithURL: method to load the web image
     
-    
-    
-    
     if (tableView == self.searchDisplayController.searchResultsTableView) {
-        cell.textLabel.text = [searchResults objectAtIndex:indexPath.row];
-        //[cell.imageView setImageWithURL:[[searchResults objectAtIndex:indexPath.row] valueForKey:@"avatar" ]
-        //               placeholderImage:[UIImage imageNamed:@"missingAvatar"]];
+        int row = [[searchResultId objectAtIndex:indexPath.row] integerValue];
+        cell.textLabel.text = [[usersArr objectAtIndex:row] valueForKey:@"realname"];
+        [cell.imageView setImageWithURL:[[usersArr objectAtIndex:row] valueForKey:@"avatar" ]
+                       placeholderImage:[UIImage imageNamed:@"missingAvatar"]];
         
     } else {
+        if ([[[usersArr objectAtIndex:row] valueForKey:@"id"] isEqualToString:sender ] == FALSE) {
         cell.textLabel.text = [[usersArr objectAtIndex:indexPath.row] valueForKey:@"realname"];
         [cell.imageView setImageWithURL:[[usersArr objectAtIndex:indexPath.row] valueForKey:@"avatar"]
                        placeholderImage:[UIImage imageNamed:@"missingAvatar"]];
+        } else {
+            return cell;
+        }
         
     }
     
-    
-    
-    
-    
+
     return cell;
 }
 
 
-
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    //Implement method for selecting users
+    if (tableView == self.searchDisplayController.searchResultsTableView) {
+        
+        int row = [[searchResultId objectAtIndex:indexPath.row] integerValue];
+        receiver = [[usersArr valueForKey:@"id"] objectAtIndex:row];
+        
+    } else {
+        receiver = [[usersArr valueForKey:@"id"] objectAtIndex:indexPath.row];
+        
+    }
+  
     
-    // [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
-    //[self performSegueWithIdentifier:@"setUserDetail" sender:self];
-    //receiver = [[usersArr valueForKey:@"id"] objectAtIndex:indexPath.row];
-    receiver = [[usersArr valueForKey:@"id"] objectAtIndex:indexPath.row];
-
-    sender = @"1"; //Implement
     NSLog(@"recievier vid val av rad: %@", receiver);
     [self showMessage:self];
-    //    if (tableView == self.searchDisplayController.searchResultsTableView) {
-    //        [self performSegueWithIdentifier: @"setUserDetail" sender: self];
-    //    }
-}
 
+}
 
 - (void)showMessage:(id)sender {
     UIAlertView *message = [[UIAlertView alloc] initWithTitle:@"Enter subject"

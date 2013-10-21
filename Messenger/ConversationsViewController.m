@@ -11,6 +11,7 @@
 #import "JSONModelLib.h"
 #import "ConversationFeed.h"
 #import "HUD.h"
+#import "Lockbox.h"
 
 @interface ConversationsViewController () {
     ConversationFeed* _feed;
@@ -19,6 +20,9 @@
 @end
 
 @implementation ConversationsViewController
+NSString *SITE;
+NSString *BASE_URL;
+
 @synthesize userid;
 
 
@@ -26,8 +30,12 @@
 - (void)viewDidLoad
 {
     [super viewDidLoad];
-    NSUserDefaults *standardUserDefaults = [NSUserDefaults standardUserDefaults];
-    userid = [standardUserDefaults stringForKey:@"userid"];
+    userid = [Lockbox stringForKey:@"userid"];
+    
+    //Setting the site information
+    SITE = [Constants getSiteName];
+    BASE_URL = [Constants getBaseUrl];
+    
     // Title
     self.title = @"My conversations";
 }

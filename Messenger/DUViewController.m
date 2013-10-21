@@ -11,19 +11,22 @@
 #import "HUD.h"
 #import "JSONModelLib.h"
 #import "ConversationFeed.h"
+#import "ConversationsModel.h"
 #import "MessagesViewController.h"
 #import <QuartzCore/QuartzCore.h>
 #import <SDWebImage/UIImageView+WebCache.h>
+#import "SDSegmentedControl.h"
+#import "Lockbox.h"
 
 @interface DUViewController (){
     ConversationFeed* _feed;
-}
-
+    
+    }
 
 @end
 
 @implementation DUViewController
-
+static dispatch_once_t onceToken;
 @synthesize username;
 @synthesize realname;
 @synthesize sex;
@@ -32,13 +35,23 @@
 @synthesize avatarURL;
 @synthesize convAvatar;
 @synthesize tableView = _tableView;
+@synthesize profileView = _profileView;
 @synthesize userid;
 @synthesize senderAvatar;
+@synthesize segmentedControl, selectedSegmentLabel;
+@synthesize ConversationButton  = conversatinbutton;
+@synthesize notif;
+
+static NSString * kMessageCountChanged = @"NULL";
+NSString *SITE;
+NSString *BASE_URL;
 
 - (id)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil
 {
     self = [super initWithNibName:nibNameOrNil bundle:nibBundleOrNil];
     if (self) {
+        [self fireUpdate];
+
     }
     return self;
 }
@@ -49,16 +62,44 @@
 {
     
     [super viewDidLoad];
+    
+    //Setting the Site Information
+    SITE = [Constants getSiteName];
+    BASE_URL = [Constants getBaseUrl];
+    
+    //Get everything together
     [self loadStandardUser];
     [self setLProfileLabels];
+    
+    //Segmented control
+    segmentedControl.selectedSegmentIndex = 1;
+    [self.tableView setHidden:NO];
+    conversatinbutton.hidden = NO;
+    [self.profileView setHidden:YES];
     
     // Title
     self.title = realname;
     [self.navigationItem setHidesBackButton:YES];
     
-    NSUserDefaults *standardUserDefaults = [NSUserDefaults standardUserDefaults];
-    userid = [standardUserDefaults stringForKey:@"userid"];
+    //Some settings
+    userid = [Lockbox stringForKey:@"userid"];
+    [self updateSelectedSegmentLabel];
     
+    
+    //Profile view
+    [self.profileView addSubview:membersinceLabel];
+    [self.profileView addSubview:presentationTextview];
+    [self.profileView addSubview:sexLabel];
+    
+    
+    
+    //Notifications
+    notif = [[UILocalNotification alloc]init];
+    notif.alertBody = @"There is a new message for you";
+    notif.alertAction = @"View";
+    notif.soundName = UILocalNotificationDefaultSoundName;
+    notif.applicationIconBadgeNumber = 0;
+    [[UIApplication sharedApplication] scheduleLocalNotification:notif];
     
 }
 
@@ -67,18 +108,33 @@
     
     //Set the identifier
     [self fireUpdate];
-    timer1 = [NSTimer scheduledTimerWithTimeInterval: 30.0 target: self
+    timer1 = [NSTimer scheduledTimerWithTimeInterval: 5.0 target: self
                                             selector: @selector(fireUpdate) userInfo: nil repeats: YES];
+    
+    
     
 }
 
 -(void)viewWillDisappear:(BOOL)animated  {
     [super viewWillDisappear:animated];
+    
+    
     [timer1 invalidate];
 }
 
+- (void)updateSelectedSegmentLabel
+{
+    self.selectedSegmentLabel.font = [UIFont boldSystemFontOfSize:self.selectedSegmentLabel.font.pointSize];
+    self.selectedSegmentLabel.text = [NSString stringWithFormat:@"%d", self.segmentedControl.selectedSegmentIndex];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, .5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^(void)
+                   {
+                       self.selectedSegmentLabel.font = [UIFont systemFontOfSize:self.selectedSegmentLabel.font.pointSize];
+                   });
+}
+
+
 -(void)fireUpdate  {
-    [HUD showUIBlockingIndicatorWithText:@"Getting Conversations"];
+    //[HUD showUIBlockingIndicatorWithText:@"Getting Conversations"];
     NSString *callURL = [NSString stringWithFormat:@"%@/inbox_conversations.php?user=%@", BASE_URL, userid];
     
     //fetch the feed
@@ -86,16 +142,12 @@
                                                  completion:^(JSONModel *model, JSONModelError *err) {
                                                      
                                                      //hide the loader view
-                                                     [HUD hideUIBlockingIndicator];
-                                                     
-                                                     //json fetched
-                                                     
-                                                     
+                                                     //[HUD hideUIBlockingIndicator];
+    
+
                                                      [self.tableView reloadData];
                                                      
-                                                 }];
-    
-    
+                                               }];
 }
 
 
@@ -107,15 +159,13 @@
 }
 
 - (void)loadStandardUser {
-    NSUserDefaults *standardUserDefaults  = [NSUserDefaults standardUserDefaults];
     
-    username = [standardUserDefaults stringForKey:@"username"];
-    realname = [standardUserDefaults stringForKey:@"realname"];
-    sex = [standardUserDefaults stringForKey:@"sex"];
-    membersince = [standardUserDefaults stringForKey:@"membersince"];
-    presentation = [standardUserDefaults stringForKey:@"presentation"];
-    avatarURL = [standardUserDefaults URLForKey:@"avatarURL"];
-    
+    username = [Lockbox stringForKey:@"username"];
+    realname = [Lockbox stringForKey:@"realname"];
+    sex = [Lockbox stringForKey:@"sex"];
+    membersince = [Lockbox stringForKey:@"membersince"];
+    presentation = [Lockbox stringForKey:@"presentation"];
+    avatarURL = [NSURL URLWithString:[Lockbox stringForKey:@"avatarURL"]];
 }
 
 -(void)setLProfileLabels
@@ -125,25 +175,34 @@
     sexLabel.text = sex;
     membersinceLabel.text = membersince;
     avatar.image = [UIImage imageWithData:[NSData dataWithContentsOfURL:avatarURL]];
+    avatar.layer.cornerRadius = 5.0;
+    avatar.layer.masksToBounds = YES;
+    avatar.layer.borderColor = [UIColor lightGrayColor].CGColor;
+    avatar.layer.borderWidth = 1.0;
+    presentationTextview.text = presentation;
     
 }
 
 
 - (IBAction)logOut:(UIBarButtonItem *)sender {
     [HUD showUIBlockingIndicatorWithText:@"Logging out..."];
-    NSUserDefaults *standardUserDefaults  = [NSUserDefaults standardUserDefaults];
+    [Lockbox setString:@"" forKey:@"userid"];
+    [Lockbox setString:@"" forKey:@"username"];
+    [Lockbox setString:@"" forKey:@"realname"];
+    [Lockbox setString:@"" forKey:@"sex"];
+    [Lockbox setString:@"" forKey:@"membersince"];
+    [Lockbox setString:@"" forKey:@"presentation"];
+    [Lockbox setString:@"" forKey:@"avatarURL"];
     
-    [standardUserDefaults setObject:@"" forKey:@"username"];
-    [standardUserDefaults setObject:@"" forKey:@"realname"];
-    [standardUserDefaults setObject:@"" forKey:@"sex"];
-    [standardUserDefaults setObject:@"" forKey:@"membersince"];
-    [standardUserDefaults setObject:@"" forKey:@"presentation"];
-    [standardUserDefaults setObject:@"" forKey:@"avatarURL"];
     [NSThread sleepForTimeInterval:0.5];
-    [standardUserDefaults synchronize];
+    
     [HUD hideUIBlockingIndicator];
     [self performSegueWithIdentifier:@"start" sender:self];
+    
+    
 }
+
+
 
 
 #pragma mark - UITableViewDataSource Methods
@@ -169,18 +228,46 @@
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
                                       reuseIdentifier:identifier];
     }
-    
     // Here we use the new provided setImageWithURL: method to load the web image
+    
     [cell.imageView setImageWithURL:conversation.avatar
                    placeholderImage:[UIImage imageNamed:@"missingAvatar"]];
     
- 
     cell.textLabel.text = conversation.title;
-    cell.detailTextLabel.text = conversation.startedby;
+    if ([conversation.startedbyid isEqualToString:[Lockbox stringForKey:@"userid"]]){
+        if ([conversation.conversationflag intValue] == 2 | [conversation.conversationflag intValue] == 0) {
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ - unread", conversation.startedby];
+            UIImageView *imageView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"red_dot_small.png"]];
+            [imageView setFrame:CGRectMake(45,30,7,7)]; //refactor this for better display in iOS6.0
+            [cell.contentView addSubview:imageView];
+            dispatch_once (&onceToken, ^{
+            notif.applicationIconBadgeNumber = notif.applicationIconBadgeNumber +1;
+            [[UIApplication sharedApplication] scheduleLocalNotification:notif];
+            });
+            
+        } else {
+            
+            cell.detailTextLabel.text = conversation.startedby;
+        }
+    } else if ([conversation.startedbyid isEqualToString:[Lockbox stringForKey:@"userid"]] == NO) {
+        
+        if ([conversation.conversationflag intValue] == 1 | [conversation.conversationflag intValue] == 0){
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ - unread", conversation.startedby];
+            UIImageView *imageView = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"red_dot_small.png"]];
+            [imageView setFrame:CGRectMake(45,30,7,7)]; //refactor this for better display in iOS6.0
+            [cell.contentView addSubview:imageView];
+            dispatch_once (&onceToken, ^{
+            notif.applicationIconBadgeNumber = notif.applicationIconBadgeNumber +1;
+            [[UIApplication sharedApplication] scheduleLocalNotification:notif];
+            });
+        }
+        cell.detailTextLabel.text = conversation.startedby;
+    }
    
     return cell;
     
 }
+
 
 
 #pragma mark - Table view delegate
@@ -198,7 +285,7 @@
     
 }
 
-- (IBAction)newConversation{
+- (IBAction)newConversation: (UIButton *) sender{
     [self performSegueWithIdentifier:@"newConversation" sender:self];
     
 }
@@ -206,6 +293,21 @@
 - (IBAction)cancel {
     
     [self dismissViewControllerAnimated:YES completion:nil];
+}
+- (IBAction)segmentDidChange:(id)sender
+{
+    if(segmentedControl.selectedSegmentIndex == 0){
+		NSLog(@"1");
+        [self.tableView setHidden:YES];
+        conversatinbutton.hidden = YES;
+        [self.profileView setHidden:NO];
+	}
+	if(segmentedControl.selectedSegmentIndex == 1){
+        NSLog(@"2");
+        [self.tableView setHidden:NO];
+        conversatinbutton.hidden = NO;
+        [self.profileView setHidden:YES];
+	}
 }
 
 

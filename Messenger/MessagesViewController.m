@@ -9,6 +9,8 @@
 #import "Constants.h"
 #import "MessagesViewController.h"
 #import "ODRefreshControl.h"
+#import "DUViewController.h"
+#import "Lockbox.h"
 
 
 
@@ -18,8 +20,10 @@
 @end
 
 @implementation MessagesViewController
+NSString *SITE;
+NSString *BASE_URL;
 
-@synthesize messages, json, jsonDict;
+@synthesize messages, json, jsonDict, closeBarButton;
 
 static NSString *conversationid;
 static NSString *receiver;
@@ -44,7 +48,6 @@ ODRefreshControl *refreshControl1;
 }
 
 + (void)senderAvatarMthd : (NSURL *)senderAvatarPassed {
-    
     senderAvatarURL = senderAvatarPassed;
     return; //??
 }
@@ -53,9 +56,25 @@ ODRefreshControl *refreshControl1;
 - (void)viewDidLoad
 {
     [super viewDidLoad];
+    
+    //Setting the site Information
+    SITE = [Constants getSiteName];
+    BASE_URL = [Constants getBaseUrl];
+    
     self.delegate = self;
     self.dataSource = self;
     self.title = @"Messages";
+    [self updateConversation:conversationid];
+    [self.navigationItem setHidesBackButton:YES];
+}
+
+-(void)viewDidLayoutSubviews{
+    [self scrollToBottomAnimated:NO] ;
+    //[self.inputToolBarView.textView becomeFirstResponder];
+}
+
+-(void)viewDidAppear:(BOOL)animated{
+    
 }
 
 -(void)viewWillAppear:(BOOL)animated
@@ -65,10 +84,7 @@ ODRefreshControl *refreshControl1;
     NSLog(@"MVC conversationid :%@",conversationid);
     NSLog(@"MVC sender avatar %@", senderAvatarURL);
     NSLog(@"MVC reciever %@", receiver);
-    NSUserDefaults *standardUserDefaults  = [NSUserDefaults standardUserDefaults];
-    self.sender = [standardUserDefaults stringForKey:@"userid"];
-    
-    
+    self.sender = [Lockbox stringForKey:@"userid"];
     
     NSString *callURL = [NSString stringWithFormat:@"%@/inbox_messages.php?conversationId=%@", BASE_URL, conversationid];
     NSData* messFeed = [NSData dataWithContentsOfURL:
@@ -100,6 +116,9 @@ ODRefreshControl *refreshControl1;
     
     //Load the avatar of sender - we are not implementing avatars for outgoing messages
     [self getAvatar];
+    [self scrollToBottomAnimated:YES];
+    [super viewWillAppear:animated];
+    
 }
 
 -(void) viewWillDisappear:(BOOL)animated  {
@@ -107,13 +126,11 @@ ODRefreshControl *refreshControl1;
     [timer1 invalidate];
     [timer2 invalidate];
     [timer3 invalidate];
+
     
     [json removeAllObjects];
-    if ([self.navigationController.viewControllers indexOfObject:self]==NSNotFound) {
-        // back button was pressed.  We know this is true because self is no longer
-        // in the navigation stack.
-    }
-    
+
+
 }
 
 
@@ -125,12 +142,7 @@ ODRefreshControl *refreshControl1;
 }
 
 
-- (void)buttonPressed:(UIButton*)sender
-{
-    // Testing pushing/popping messages view ???? Where did this code come from?? Do we need this?
-    MessagesViewController *vc = [[MessagesViewController alloc] initWithNibName:nil bundle:nil];
-    [self.navigationController pushViewController:vc animated:YES];
-}
+
 
 #pragma mark - Table view data source
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
@@ -144,13 +156,6 @@ ODRefreshControl *refreshControl1;
 #pragma mark - Messages view delegate
 - (void)sendPressed:(UIButton *)sender withText:(NSString *)text
 {
-    
-    
-    
-    //[self.messages addObject:text];
-    
-    //[self.timestamps addObject:text];
-    
     self.newmessage = text;
     
     if((self.messages.count - 1) % 2)
@@ -158,6 +163,7 @@ ODRefreshControl *refreshControl1;
     else
         [JSMessageSoundEffect playMessageReceivedSound];
     
+    [self scrollToBottomAnimated:YES];
     [self sendMessage:self];
     [self finishSend];
 }
@@ -174,7 +180,7 @@ ODRefreshControl *refreshControl1;
 
 - (JSBubbleMessageStyle)messageStyleForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    return JSBubbleMessageStyleFlat;
+    return JSBubbleMessageStyleSquare;
 }
 
 - (JSMessagesViewTimestampPolicy)timestampPolicy
@@ -228,24 +234,25 @@ ODRefreshControl *refreshControl1;
     //Refresh code - for now it is just for show, not fully implemented
     double delayInSeconds = 1.0;
     //[self.messages addObject:@"Added @ MessVC."];
-    [self loadJson];
+    
     
     dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
     dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
-       
-    [refreshControl endRefreshing ];
+        [self scrollToBottomAnimated:YES];
+        [self loadJson];
+        [refreshControl endRefreshing ];
+        NSLog(@"1. dropViewDidBeginRefreshing");
     });
 }
 
 - (void)dropViewDidBeginRefreshingTime: (ODRefreshControl *)refreshControl
 {
     double delayInSeconds = 1.0;
-    //[self.messages addObject:@"Added @ MessVC."];
-   
     
     dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
     dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
         [self loadJson];
+         NSLog(@"2. dropViewDidBeginRefreshingTime");
     });
 }
 
@@ -259,9 +266,23 @@ ODRefreshControl *refreshControl1;
 - (IBAction)sendMessage:(id)sender{
     
     [self doPOST];
+    [self scrollToBottomAnimated:YES];
     
 }
 
+- (IBAction)closeMessageView:(id)sender {
+    UINavigationController *duview =[self.storyboard instantiateViewControllerWithIdentifier:@"userNav"];
+    
+   // [duview setModalTransitionStyle:UIModalTrans];
+    [self presentViewController:duview animated:YES completion:nil];
+}
+
+- (void)scrollToBottomAnimated:(BOOL)animated {
+    NSInteger numberOfRows = [self.tableView numberOfRowsInSection:0];
+    if (numberOfRows) {
+        [self.tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:numberOfRows-1 inSection:0] atScrollPosition:UITableViewScrollPositionBottom animated:animated];
+    }
+}
 
 - (void)doPOST {
     //Prepering for POST request
@@ -277,7 +298,7 @@ ODRefreshControl *refreshControl1;
                            conversationid,
                            timestamp,
                            self.sender,
-                           self.receiver,
+                           receiver,
                            self.newmessage];
     
     [request setValue:[NSString
@@ -290,18 +311,55 @@ ODRefreshControl *refreshControl1;
     [[NSURLConnection alloc] initWithRequest:request delegate:self];
     
     double delayInSeconds = 1.0;
-    //[self.messages addObject:@"Added @ MessVC."];
     
     
     dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
     dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
-       
+        
+    });
+    //reload everything
+    [self dropViewDidBeginRefreshingTime:nil];
+    [self scrollToBottomAnimated:YES];
+    [self.tableView reloadData];
+    return;
+    
+}
+
+- (void) updateConversation: (NSString*)conversation {
+    //Prepare to updateConversation. We are adding +1 to read & view in malbox_conversations
+ 
+    
+    
+    NSMutableURLRequest *request =
+    [[NSMutableURLRequest alloc] initWithURL:
+     [NSURL URLWithString:[NSString stringWithFormat:@"%@/update_conversation.php", BASE_URL]]];
+    
+    [request setHTTPMethod:@"POST"];
+    NSString *postString =[NSString stringWithFormat:@"conversationId=%@",
+                           conversation];
+    
+    [request setValue:[NSString
+                       stringWithFormat:@"%d", [postString length]]
+   forHTTPHeaderField:@"Content-length"];
+    
+    [request setHTTPBody:[postString
+                          dataUsingEncoding:NSUTF8StringEncoding]];
+    
+    [[NSURLConnection alloc] initWithRequest:request delegate:self];
+    
+    double delayInSeconds = 1.0;
+    
+    
+    dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
+    dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+        
     });
     //reload everything
     [self dropViewDidBeginRefreshingTime:nil];
     [self.tableView reloadData];
     return;
-    
+
+
 }
 
 -(void)cleanArray
@@ -329,12 +387,12 @@ ODRefreshControl *refreshControl1;
         [json setObject:newMessages forKey:@"messagesinconversation"];
         
     }
-
+    
     
 }
 
 - (void) loadJson {
-     NSLog(@"conversationID %@", conversationid);
+    NSLog(@"conversationID %@", conversationid);
     NSString *callURL = [NSString stringWithFormat:@"%@/inbox_messages.php?conversationId=%@", BASE_URL, conversationid];
     NSData* messFeed = [NSData dataWithContentsOfURL:
                         [NSURL URLWithString:callURL]
@@ -349,7 +407,7 @@ ODRefreshControl *refreshControl1;
         [self cleanArray];
         [self.tableView reloadData];
     }
-
+    
 }
 
 @end

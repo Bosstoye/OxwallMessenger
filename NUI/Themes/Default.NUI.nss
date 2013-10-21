@@ -14,6 +14,19 @@
 @secondaryBackgroundColorBottom: #F9F9F9;
 @primaryBorderColor: #A2A2A2;
 @primaryBorderWidth: 1;
+BarButtonItem {
+  
+  background-color: @primaryBackgroundColor;
+    background-color-highlighted: #CCCCCC;
+    border-color: @primaryBorderColor;
+    border-width: @primaryBorderWidth;
+    corner-radius: 7;
+    font-name: @secondaryFontNameBold;
+    font-color: @primaryFontColor;
+    font-color-disabled: @secondaryFontColor;
+    font-size: 12;
+    text-shadow-color: clear;
+}
 
 BarButton {
     background-color: @primaryBackgroundColor;
@@ -47,9 +60,15 @@ LargeButton {
     corner-radius: 10;
 }
 SmallButton {
+    background-color-top: @primaryBackgroundColor;
+    background-color-bottom: @primaryBackgroundColor
+    border-color: @primaryBackgroundColor;
+    border-width: 0;
     height: 22;
     font-size: 12;
     corner-radius: 5;
+    border-width: 0;
+
 }
 Label {
     font-name: @secondaryFontName;
@@ -97,8 +116,8 @@ TabBar {
 TabBarItem {
     font-name: @secondaryFontName;
     font-color: @primaryFontColor;
-    font-size: 18;
-    text-offset: 0,-11;
+    font-size: 10;
+    text-offset: 0,0;
 }
 TableCell {
     background-color-top: @secondaryBackgroundColorTop;

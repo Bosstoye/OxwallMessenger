@@ -9,6 +9,12 @@
 #import <UIKit/UIKit.h>
 
 @interface StartViewController : UIViewController
+@property (strong, nonatomic) IBOutlet UIButton *settingsButton;
+@property (strong, nonatomic) IBOutlet UIButton *aboutButton;
+@property (strong, nonatomic) IBOutlet UILabel *versionLabel;
 
 - (IBAction)start:(id)sender;
+-(IBAction)showAbout:(id)sender;
+- (IBAction)showSettings:(id)sender;
+
 @end
